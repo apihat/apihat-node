@@ -24,7 +24,7 @@ $ yarn add apihat-node
 ```
 ### Use the middleware with your Express app
 Please ensure you load the necessary JavaScript modules in your `app.js` or `index.js` file.
-```
+```js
 const express = require("express");
 const { useApiHat } = require("apihat-node");
 
