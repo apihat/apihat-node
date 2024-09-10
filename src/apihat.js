@@ -1,25 +1,34 @@
 const os = require("os");
-const fetch = require("node-fetch"); // Make sure node-fetch is installed
+const fetch = require("node-fetch");
+const { log } = require("console");
 
 /**
  * Middleware function to log data to API Hat.
  * @param {Object} options - Configuration options.
- * @param {string} options.apiKey - Your API Key.
- * @param {string} options.projectId - Your Project ID.
+ * @param {string} options.apiKey - API Key.
+ * @param {string} options.projectId - Project ID.
  */
 function useApiHat({ apiKey, projectId }) {
   return function (req, res, next) {
     const requestStartTime = process.hrtime();
 
-    // Capture original send function
+    // Capture original methods
     const originalSend = res.send.bind(res);
+    const originalRender = res.render.bind(res);
 
     res.send = function (body) {
-      // Capture response data
       res.__apiHat_body_response = body;
-
-      // Proceed with original send function
       originalSend(body);
+    };
+
+    res.render = function (view, options, callback) {
+      // Capture rendered body if callback is not provided
+      if (typeof options === 'function') {
+        callback = options;
+        options = {};
+      }
+      res.__apiHat_body_response = view; 
+      originalRender(view, options, callback);
     };
 
     // Call next middleware
@@ -28,29 +37,29 @@ function useApiHat({ apiKey, projectId }) {
     // After response is sent
     res.on("finish", () => {
       const error = res.locals.error || null;
-      const fieldsToMaskMap = {}; // Define your fields to mask here
+      const fieldsToMaskMap = {}; 
 
       sendPayloadToApiHat(
-          apiKey,
-          projectId,
-          {
-            body: req.body,
-            headers: req.headers,
-            method: req.method,
-            url: req.originalUrl,
-            ip: req.ip,
-            protocol: req.protocol,
-            httpVersion: req.httpVersion
-          },
-          {
-            body: res.__apiHat_body_response,
-            headers: res.getHeaders(),
-            statusCode: res.statusCode,
-            length: res.get("Content-Length") || null
-          },
-          requestStartTime,
-          error,
-          fieldsToMaskMap
+        apiKey,
+        projectId,
+        {
+          body: req.body,
+          headers: req.headers,
+          method: req.method,
+          url: req.originalUrl,
+          ip: req.ip,
+          protocol: req.protocol,
+          httpVersion: req.httpVersion
+        },
+        {
+          body: res.__apiHat_body_response,
+          headers: res.getHeaders(),
+          statusCode: res.statusCode,
+          length: res.get("Content-Length") || null
+        },
+        requestStartTime,
+        error,
+        fieldsToMaskMap
       );
     });
   };
@@ -77,46 +86,48 @@ function sendPayloadToApiHat(apiKey, projectId, requestData, responseData, reque
 
   const protocol = `${requestData.protocol.toUpperCase()}/${requestData.httpVersion}`;
 
-  const dataToSend = {
-    api_key: apiKey,
-    project_id: projectId,
-    version: "1.0.0", // or dynamically get it from package.json
-    sdk: "node",
-    data: {
-      server: {
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        os: {
-          name: os.platform(),
-          release: os.release(),
-          architecture: os.arch(),
+  const dataToSend = [
+    {
+      api_key: apiKey,
+      project_id: projectId,
+      version: "1.0.0", // or dynamically get it from package.json
+      sdk: "node",
+      data: {
+        server: {
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          os: {
+            name: os.platform(),
+            release: os.release(),
+            architecture: os.arch(),
+          },
+          software: null,
+          signature: null,
+          protocol: protocol,
         },
-        software: null,
-        signature: null,
-        protocol: protocol,
+        language: {
+          name: "node",
+          version: process.version,
+        },
+        request: {
+          timestamp: new Date().toISOString().replace("T", " ").substr(0, 19),
+          ip: requestData.ip,
+          url: requestData.url,
+          user_agent: requestData.headers["user-agent"],
+          method: requestData.method,
+          headers: maskSensitiveValues(requestData.headers, fieldsToMaskMap),
+          body: maskedRequestPayload !== undefined ? maskedRequestPayload : null,
+        },
+        response: {
+          headers: maskSensitiveValues(responseData.headers, fieldsToMaskMap),
+          code: responseData.statusCode,
+          size: responseData.length || null,
+          load_time: getRequestDuration(requestStartTime),
+          body: maskedResponsePayload !== undefined ? maskedResponsePayload : null,
+        },
+        errors: errors,
       },
-      language: {
-        name: "node",
-        version: process.version,
-      },
-      request: {
-        timestamp: new Date().toISOString().replace("T", " ").substr(0, 19),
-        ip: requestData.ip,
-        url: requestData.url,
-        user_agent: requestData.headers["user-agent"],
-        method: requestData.method,
-        headers: maskSensitiveValues(requestData.headers, fieldsToMaskMap),
-        body: maskedRequestPayload !== undefined ? maskedRequestPayload : null,
-      },
-      response: {
-        headers: maskSensitiveValues(responseData.headers, fieldsToMaskMap),
-        code: responseData.statusCode,
-        size: responseData.length || null,
-        load_time: getRequestDuration(requestStartTime),
-        body: maskedResponsePayload !== undefined ? maskedResponsePayload : null,
-      },
-      errors: errors,
-    },
-  };
+    }
+  ];
 
   fetch("https://api.apihat.com/api/requests", {
     method: "POST",
