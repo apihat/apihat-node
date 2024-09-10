@@ -1,0 +1,35 @@
+{
+  "name": "apihat-node",
+  "version": "1.0.0",
+  "description": "API Hat Node SDK",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "format": "prettier --write .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apihat/apihat-node.git"
+  },
+  "keywords": [
+    "express",
+    "nodejs"
+  ],
+  "author": "API Hat Engineering, Inc. <info@apihat.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/apihat/apihat-node/issues"
+  },
+  "dependencies": {
+    "finalhandler": "~1.1.2",
+    "node-fetch": "^2.6.1",
+    "stack-trace": "0.0.10"
+  },
+  "devDependencies": {
+    "prettier": "^2.3.2"
+  }
+}
