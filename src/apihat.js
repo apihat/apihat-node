@@ -1,6 +1,5 @@
 const os = require("os");
 const fetch = require("node-fetch");
-const { log } = require("console");
 
 /**
  * Middleware function to log data to API Hat.
@@ -16,6 +15,8 @@ function useApiHat({ apiKey, projectId }) {
     const originalSend = res.send.bind(res);
     const originalRender = res.render.bind(res);
 
+    let requestSize = Buffer.byteLength(JSON.stringify(req.body || ''), 'utf8'); // Request size
+
     res.send = function (body) {
       res.__apiHat_body_response = body;
       originalSend(body);
@@ -27,7 +28,7 @@ function useApiHat({ apiKey, projectId }) {
         callback = options;
         options = {};
       }
-      res.__apiHat_body_response = view; 
+      res.__apiHat_body_response = view;
       originalRender(view, options, callback);
     };
 
@@ -37,29 +38,32 @@ function useApiHat({ apiKey, projectId }) {
     // After response is sent
     res.on("finish", () => {
       const error = res.locals.error || null;
-      const fieldsToMaskMap = {}; 
+      const fieldsToMaskMap = {};
+
+      let responseSize = res.get("Content-Length") || Buffer.byteLength(res.__apiHat_body_response || '', 'utf8'); // Response size
 
       sendPayloadToApiHat(
-        apiKey,
-        projectId,
-        {
-          body: req.body,
-          headers: req.headers,
-          method: req.method,
-          url: req.originalUrl,
-          ip: req.ip,
-          protocol: req.protocol,
-          httpVersion: req.httpVersion
-        },
-        {
-          body: res.__apiHat_body_response,
-          headers: res.getHeaders(),
-          statusCode: res.statusCode,
-          length: res.get("Content-Length") || null
-        },
-        requestStartTime,
-        error,
-        fieldsToMaskMap
+          apiKey,
+          projectId,
+          {
+            body: req.body,
+            headers: req.headers,
+            method: req.method,
+            url: req.originalUrl,
+            ip: req.ip,
+            protocol: req.protocol,
+            httpVersion: req.httpVersion,
+            size: requestSize // Request size in bytes
+          },
+          {
+            body: res.__apiHat_body_response,
+            headers: res.getHeaders(),
+            statusCode: res.statusCode,
+            length: responseSize // Response size in bytes
+          },
+          requestStartTime,
+          error,
+          fieldsToMaskMap
       );
     });
   };
@@ -85,6 +89,14 @@ function sendPayloadToApiHat(apiKey, projectId, requestData, responseData, reque
   }
 
   const protocol = `${requestData.protocol.toUpperCase()}/${requestData.httpVersion}`;
+
+  // Convert request and response bodies to JSON strings if they are objects
+  const requestBodyString = typeof requestData.body === 'object' ? JSON.stringify(requestData.body) : requestData.body || '';
+  const responseBodyString = typeof responseData.body === 'object' ? JSON.stringify(responseData.body) : responseData.body || '';
+
+  // Convert bytes to kilobytes
+  const requestSizeInKB = Buffer.byteLength(requestBodyString, 'utf8') / 1024;
+  const responseSizeInKB = Buffer.byteLength(responseBodyString, 'utf8') / 1024;
 
   const dataToSend = [
     {
@@ -116,11 +128,12 @@ function sendPayloadToApiHat(apiKey, projectId, requestData, responseData, reque
           method: requestData.method,
           headers: maskSensitiveValues(requestData.headers, fieldsToMaskMap),
           body: maskedRequestPayload !== undefined ? maskedRequestPayload : null,
+          size: requestSizeInKB, // Add size in KB
         },
         response: {
           headers: maskSensitiveValues(responseData.headers, fieldsToMaskMap),
           code: responseData.statusCode,
-          size: responseData.length || null,
+          size: responseSizeInKB, // Add size in KB
           load_time: getRequestDuration(requestStartTime),
           body: maskedResponsePayload !== undefined ? maskedResponsePayload : null,
         },
