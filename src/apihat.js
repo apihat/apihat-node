@@ -102,7 +102,7 @@ function sendPayloadToApiHat(apiKey, projectId, requestData, responseData, reque
     {
       api_key: apiKey,
       project_id: projectId,
-      version: "1.0.0", // or dynamically get it from package.json
+      version: "1.0.0",
       sdk: "node",
       data: {
         server: {
@@ -142,11 +142,10 @@ function sendPayloadToApiHat(apiKey, projectId, requestData, responseData, reque
     }
   ];
 
-  fetch("https://api.apihat.com/api/requests", {
+  fetch(`https://api.apihat.com/api/requests/create?projectId=${projectId}&apiKey=${apiKey}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": apiKey,
     },
     body: JSON.stringify(dataToSend),
   })
